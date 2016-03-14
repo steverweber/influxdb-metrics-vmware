@@ -1,0 +1,128 @@
+$uri=$args[0]
+$vc_host=$(hostname)
+
+
+#### Requirements
+try {
+    $powercli = Get-PSSnapin -Name VMware.VimAutomation.Core -Registered
+    if ($powercli.Version.Major -ge 6) {
+        Import-Module -Name VMware.VimAutomation.Core -ErrorAction Stop
+        # Write-Host -Object 'PowerCLI 6+ module imported'
+    } else {
+        Add-PSSnapin -Name VMware.VimAutomation.Core -ErrorAction Stop
+        Write-Warning -Message '# PowerCLI 5 snapin added; recommend upgrading your PowerCLI version'
+    }
+}
+catch {
+    throw 'missing modules vCenter'
+}
+
+
+# Ignore self-signed SSL certificates for vCenter Server (optional)
+Set-PowerCLIConfiguration -InvalidCertificateAction Ignore -DisplayDeprecationWarnings:$false -Scope User -Confirm:$false
+# Connect to vCenter
+$null = Connect-VIServer $vc_host -ErrorAction Stop
+
+
+
+function handle_stat($h) {
+    $name = $h.Name -replace ' ', '_'
+    if ($h.PowerState -eq 'PoweredOff') {
+        Write-Error "# * $name skipped becaused Powered off"
+        return
+    }
+    $fb = ""
+    if ($h.VMHost) {
+        $fb = $fb + "vmware_guest,host=$name,esxi_host=$($h.Host.Name) "
+        $fb = $fb + "cpu_NumCpu=$($h.NumCpu)i,"
+        $fb = $fb + "mem_MemoryMB=$([math]::round($h.MemoryMB,0))i,"
+        $fb = $fb + "disk_ProvisionedSpaceGB=$([math]::round($h.ProvisionedSpaceGB,2)),"
+        $fb = $fb + "disk_UsedSpaceGB=$([math]::round($h.UsedSpaceGB,2)) `n"
+    } else {
+        # is esxi host
+        $fb = $fb + "vmware_esxi,host=$name "
+        $fb = $fb + "cpu_NumCpu=$($h.NumCpu)i,"
+        $fb = $fb + "cpu_CpuTotalMhz=$($h.CpuTotalMhz)i,"
+        $fb = $fb + "cpu_CpuUsageMhz=$($h.CpuUsageMhz)i,"
+        $fb = $fb + "mem_MemoryTotalMB=$([math]::round($h.MemoryTotalMB,0))i,"
+        $fb = $fb + "mem_MemoryUsageMB=$([math]::round($h.MemoryUsageMB,0))i `n"
+    }
+    $trust = 20
+    $stats_map = @{}
+    $stats = Get-Stat -Entity $h -Stat '*' -Instance '' -Realtime -MaxSamples 1
+    foreach ($m in $stats) {
+        $mi = $m.MetricId
+        $mv = $m.Value
+        #$mu = "$($m.Unit)"
+        if ($mv -eq 1) {
+            # some trust issues when value is one... if tomany ones dont trust.
+            $trust = $trust - 1
+        }
+        if ($mv -is [float] -or $mv -is [double]) {
+            $mv = $([math]::round($mv,5))
+        } else {
+            $mv = "$([math]::floor($mv))i"
+        }
+        $mia = $mi.Split('.', 2)
+        if ($stats_map.ContainsKey($mia[0])) {
+            $stats_map.Item($mia[0]).add($mia[1], $mv)
+        } else {
+            $stats_map.add($mia[0], @{})
+            $stats_map.Item($mia[0]).add($mia[1], $mv)
+        }
+        if ($mi -eq 'cpu.usage.average') {
+            $stats_map.Item($mia[0]).add("$($mia[1])_cores", $([math]::round($mv * $h.NumCpu, 3)))
+        }
+    }
+    if ( $trust -lt 0 ) {
+        # stats with tomany values of one, smells of error
+        Write-Error $fb
+        Write-Error '# * data not trusted'
+        return 1
+    }
+    foreach ($k in $stats_map.Keys) {
+        $fb = $fb + "vmware_$k,host=$name "
+        foreach ($s in $stats_map[$k].Keys) {
+            $sname = $s
+            #$sname = $sname.Replace('.', '_')
+            $sname = $sname.Replace(' ', '_')
+            $sname = $sname.Replace('[', '_')
+            $sname = $sname.Replace(']', '_')
+            $fb = $fb + "$sname=$($stats_map["$k"]["$s"]),"
+        }
+        $fb = $fb.TrimEnd(',') + " `n"
+    }
+
+    if ($uri) {
+        $r = Invoke-WebRequest -Uri $uri -Body $fb -Method Post -UseBasicParsing -ErrorAction:Stop
+    } else {
+        Write-Host $fb
+    }
+    return 0
+}
+
+
+
+function handle_stat_safe($h, $pfix) {
+    # preform a retry if error code 1
+    $r = handle_stat $h $pfix
+    if ($r -eq 1) {
+        $r = handle_stat $h $pfix
+    }
+}
+
+
+
+#### Collect host and vm stats
+$vmhosts = Get-VMHost
+foreach ($vmhost in $vmhosts) {
+    handle_stat_safe $vmhost
+}
+$vms = Get-VM
+foreach ($vm in $vms) {
+    handle_stat_safe $vm
+}
+
+
+
+Disconnect-VIServer -Confirm:$false
