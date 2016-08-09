@@ -6,7 +6,7 @@ Drop this file onto a server that has access to vmware powershell tools.
 
 If using telegraf exec
 ----------------------
-
+untested
 ``` 
 [[inputs.exec]]
   # Shell/commands array
