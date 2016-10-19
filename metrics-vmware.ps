@@ -1,26 +1,29 @@
 <#
-
-.SYNOPSIS
-
-Creates a new shared printer.
-
 .DESCRIPTION
 
-To do
+Use VMware module to connect to vCenter and output all metrics on systems in influxdb line format
 
 .EXAMPLE
 
-Put an example here
+CI:
+metrics-vmware.ps 'https://influxdb.example.ca:8086/write?db=math&u=telegraf&p=???????&precision=s'
 
-.NOTES
-
+telegraf.cfg:
+[[inputs.exec]]
+    commands = [
+        '"C:\windows\system32\WindowsPowerShell\v1.0\powershell.exe" -File "C:\Program Files\Telegraf\vmware_collect_stats.ps1"',
+    ]
+    data_format = "influx"
+    timeout = "25m"
+    interval = "30m"
 
 #>
 # Allow common parameters
 [CmdletBinding()]
 
 ## if uri is set, send metrics directly to influx not to stdout
-#$uri='https://influxdb.math.uwaterloo.ca:8086/write?db=math&u=telegraf&p=???????&precision=s'
+# 'https://influxdb.example.ca:8086/write?db=math&u=telegraf&p=???????&precision=s'
+$uri=$args[0]
 $vc_host=$(hostname)
 
 # Requirements
