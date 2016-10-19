@@ -1,39 +1,62 @@
-$uri=$args[0]
+<#
+
+.SYNOPSIS
+
+Creates a new shared printer.
+
+.DESCRIPTION
+
+To do
+
+.EXAMPLE
+
+Put an example here
+
+.NOTES
+
+
+#>
+# Allow common parameters
+[CmdletBinding()]
+
+## if uri is set, send metrics directly to influx not to stdout
+#$uri='https://influxdb.math.uwaterloo.ca:8086/write?db=math&u=telegraf&p=???????&precision=s'
 $vc_host=$(hostname)
 
-
-#### Requirements
+# Requirements
 try {
     $powercli = Get-PSSnapin -Name VMware.VimAutomation.Core -Registered
     if ($powercli.Version.Major -ge 6) {
         Import-Module -Name VMware.VimAutomation.Core -ErrorAction Stop
-        # Write-Host -Object 'PowerCLI 6+ module imported'
     } else {
         Add-PSSnapin -Name VMware.VimAutomation.Core -ErrorAction Stop
-        Write-Warning -Message '# PowerCLI 5 snapin added; recommend upgrading your PowerCLI version'
+        Write-Warning -Message 'PowerCLI 5 snapin added; recommend upgrading your PowerCLI version'
     }
 }
 catch {
+    write-eventlog -logname Application -source "Telegraf - VMware collect" -eventID 404 -entrytype Error -message 'missing modules vCenter'
     throw 'missing modules vCenter'
 }
 
 
 # Ignore self-signed SSL certificates for vCenter Server (optional)
-Set-PowerCLIConfiguration -InvalidCertificateAction Ignore -DisplayDeprecationWarnings:$false -Scope User -Confirm:$false
+$null = Set-PowerCLIConfiguration -InvalidCertificateAction Ignore -DisplayDeprecationWarnings:$false -Scope User -Confirm:$false
 # Connect to vCenter
 $null = Connect-VIServer $vc_host -ErrorAction Stop
-
+# default server mode
 
 
 function handle_stat($h) {
     $name = $h.Name -replace ' ', '_'
+    Write-Debug -Message "Working on: $name"
     if ($h.PowerState -eq 'PoweredOff') {
-        Write-Error "# * $name skipped becaused Powered off"
+        Write-Debug -Message '* skip PoweredOff'
         return
     }
     $fb = ""
+    
     if ($h.VMHost) {
-        $fb = $fb + "vmware_guest,host=$name,esxi_host=$($h.Host.Name) "
+        $fb = $fb + "vmware_guest,host=$name,esxi_host=$($h.VMHost.Name) "
         $fb = $fb + "cpu_NumCpu=$($h.NumCpu)i,"
         $fb = $fb + "mem_MemoryMB=$([math]::round($h.MemoryMB,0))i,"
         $fb = $fb + "disk_ProvisionedSpaceGB=$([math]::round($h.ProvisionedSpaceGB,2)),"
@@ -53,7 +76,6 @@ function handle_stat($h) {
     foreach ($m in $stats) {
         $mi = $m.MetricId
         $mv = $m.Value
-        #$mu = "$($m.Unit)"
         if ($mv -eq 1) {
             # some trust issues when value is one... if tomany ones dont trust.
             $trust = $trust - 1
@@ -74,10 +96,10 @@ function handle_stat($h) {
             $stats_map.Item($mia[0]).add("$($mia[1])_cores", $([math]::round($mv * $h.NumCpu, 3)))
         }
     }
-    if ( $trust -lt 0 ) {
+    if ($trust -lt 0) {
         # stats with tomany values of one, smells of error
-        Write-Error $fb
-        Write-Error '# * data not trusted'
+        Write-Debug -Message $fb
+        Write-Debug -Message '* data not trusted'
         return 1
     }
     foreach ($k in $stats_map.Keys) {
@@ -102,7 +124,6 @@ function handle_stat($h) {
 }
 
 
-
 function handle_stat_safe($h, $pfix) {
     # preform a retry if error code 1
     $r = handle_stat $h $pfix
@@ -112,17 +133,20 @@ function handle_stat_safe($h, $pfix) {
 }
 
 
-
-#### Collect host and vm stats
-$vmhosts = Get-VMHost
-foreach ($vmhost in $vmhosts) {
-    handle_stat_safe $vmhost
+try {
+    # Collect host and vm stats
+    $vmhosts = Get-VMHost
+    foreach ($vmhost in $vmhosts) {
+        handle_stat_safe $vmhost
+    }
+    $vms = Get-VM
+    foreach ($vm in $vms) {
+        handle_stat_safe $vm
+    }
 }
-$vms = Get-VM
-foreach ($vm in $vms) {
-    handle_stat_safe $vm
+catch {
+    write-eventlog -logname Application -source "Telegraf - VMware collect" -eventID 404 -entrytype Error -message $_.Exception.Message
 }
-
-
-
-Disconnect-VIServer -Confirm:$false
+Finally {
+    Disconnect-VIServer -Confirm:$false
+}
