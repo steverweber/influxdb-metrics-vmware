@@ -60,18 +60,18 @@ function handle_stat($h) {
     
     if ($h.VMHost) {
         $fb = $fb + "vmware_guest,host=$name,esxi_host=$($h.VMHost.Name) "
-        $fb = $fb + "cpu_NumCpu=$($h.NumCpu)i,"
-        $fb = $fb + "mem_MemoryMB=$([math]::round($h.MemoryMB,0))i,"
+        $fb = $fb + "cpu_NumCpu=$($h.NumCpu),"
+        $fb = $fb + "mem_MemoryMB=$([math]::round($h.MemoryMB,0)),"
         $fb = $fb + "disk_ProvisionedSpaceGB=$([math]::round($h.ProvisionedSpaceGB,2)),"
         $fb = $fb + "disk_UsedSpaceGB=$([math]::round($h.UsedSpaceGB,2)) `n"
     } else {
         # is esxi host
         $fb = $fb + "vmware_esxi,host=$name "
-        $fb = $fb + "cpu_NumCpu=$($h.NumCpu)i,"
-        $fb = $fb + "cpu_CpuTotalMhz=$($h.CpuTotalMhz)i,"
-        $fb = $fb + "cpu_CpuUsageMhz=$($h.CpuUsageMhz)i,"
-        $fb = $fb + "mem_MemoryTotalMB=$([math]::round($h.MemoryTotalMB,0))i,"
-        $fb = $fb + "mem_MemoryUsageMB=$([math]::round($h.MemoryUsageMB,0))i `n"
+        $fb = $fb + "cpu_NumCpu=$($h.NumCpu),"
+        $fb = $fb + "cpu_CpuTotalMhz=$($h.CpuTotalMhz),"
+        $fb = $fb + "cpu_CpuUsageMhz=$($h.CpuUsageMhz),"
+        $fb = $fb + "mem_MemoryTotalMB=$([math]::round($h.MemoryTotalMB,0)),"
+        $fb = $fb + "mem_MemoryUsageMB=$([math]::round($h.MemoryUsageMB,0)) `n"
     }
     $trust = 20
     $stats_map = @{}
@@ -86,7 +86,7 @@ function handle_stat($h) {
         if ($mv -is [float] -or $mv -is [double]) {
             $mv = $([math]::round($mv,5))
         } else {
-            $mv = "$([math]::floor($mv))i"
+            $mv = "$([math]::floor($mv))"
         }
         $mia = $mi.Split('.', 2)
         if ($stats_map.ContainsKey($mia[0])) {
