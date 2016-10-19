@@ -121,7 +121,7 @@ function handle_stat($h) {
     if ($uri) {
         $r = Invoke-WebRequest -Uri $uri -Body $fb -Method Post -UseBasicParsing -ErrorAction:Stop
     } else {
-        Write-Host $fb
+        Write-Host -NoNewline $fb
     }
     return 0
 }
