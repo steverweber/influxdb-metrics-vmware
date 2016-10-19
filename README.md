@@ -8,6 +8,10 @@ If using telegraf exec
 ----------------------
 requires telegraf >= v1.2 with patch (https://github.com/influxdata/telegraf/commit/4886109d9caab081f64b46e7c87d50824f4ead6b)
 ``` 
+[agent]
+    # make large because vmware powershell script can fill a small buffer passed limit
+    metric_buffer_limit = 10000
+
 # Assumes the execution policy is unrestricted. Use the -ExecutionPolicy ByPass option if required
 [[inputs.exec]]
     commands = [
