@@ -12,7 +12,6 @@ requires telegraf >= v1.2 with patch (https://github.com/influxdata/telegraf/com
     # make large because vmware powershell script can fill a small buffer passed limit
     metric_buffer_limit = 10000
 
-# Assumes the execution policy is unrestricted. Use the -ExecutionPolicy ByPass option if required
 [[inputs.exec]]
     commands = [
         '"C:\windows\system32\WindowsPowerShell\v1.0\powershell.exe" -File "C:\Program Files\Telegraf\vmware_collect_stats.ps1"',
